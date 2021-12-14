@@ -1,4 +1,6 @@
 import {
+  Checkout,
+  CheckoutLineItemEdge,
   ImageEdge,
   MoneyV2,
   Product as ShopifyProduct,
@@ -8,6 +10,60 @@ import {
 } from '../schema';
 
 import { Product } from '@common/types/product';
+import { Cart, LineItem } from '@common/types/cart';
+
+export const normalizeCart = (checkout: Checkout): Cart => {
+  return {
+    id: checkout.id,
+    createdAt: checkout.createdAt,
+    currency: {
+      code: checkout.totalPriceV2.currencyCode,
+    },
+    taxesIncluded: checkout.taxesIncluded,
+    lineItemsSubtotalPrice: +checkout.subtotalPriceV2.amount,
+    totalPrice: checkout.totalPriceV2.amount,
+    lineItems: checkout.lineItems.edges.map(normalizeLineItem),
+    discounts: [],
+  };
+};
+
+const normalizeLineItem = ({
+  node: { id, title, variant, ...rest },
+}: CheckoutLineItemEdge): LineItem => {
+  return {
+    id,
+    variantId: String(variant?.id),
+    productId: String(variant?.id),
+    name: title,
+    // path: String(variant?.product?.handle),
+    path: variant?.product?.handle ?? '',
+    discounts: [],
+    options: variant?.selectedOptions.map(({ name, value }: SelectedOption) => {
+      const option = normalizeProductOption({
+        id,
+        name,
+        values: [value],
+      });
+
+      return option;
+    }),
+    variant: {
+      id: String(variant?.id),
+      sku: variant?.sku ?? '',
+      name: variant?.title,
+      image: {
+        url:
+          process.env.NEXT_PUBLIC_FRAMEWORK === 'shopify_local'
+            ? `/images/${variant?.image?.originalSrc}`
+            : variant?.image?.originalSrc ?? '/product-image-placeholder.svg',
+      },
+      requiresShipping: variant?.requiresShipping ?? false,
+      price: variant?.priceV2.amount,
+      listPrice: variant?.compareAtPriceV2.amount,
+    },
+    ...rest,
+  };
+};
 
 const normalizeProductImages = ({ edges }: { edges: Array<ImageEdge> }) =>
   edges.map(({ node: { originalSrc: url, ...rest } }) => ({
@@ -104,3 +160,19 @@ export function normalizeProduct(productNode: ShopifyProduct): Product {
 
   return product;
 }
+
+// export function normalizeProduct(productNode: ShopifyProduct): any {
+//   const { id, title: name, handle, vendor, description, ...rest } = productNode;
+
+//   const product = {
+//     id,
+//     name,
+//     vendor,
+//     description,
+//     path: `/${handle}`,
+//     slug: handle.replace(/^\/+|\/+$/g, ''),
+//     ...rest,
+//   };
+
+//   return product;
+// }
